@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --wc-purple: #7f54b3;
+  --wc-purple-light: #9b74c7;
+  --wc-purple-dark: #67498f;
+  --wc-purple-darker: #503a6e;
+}
+
+body {
+  background: #0f0a1a;
+  color: #e8e4f0;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(127, 84, 179, 0.4);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(127, 84, 179, 0.6);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(127, 84, 179, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(127, 84, 179, 0.5); }
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #a78bfa 0%, #7f54b3 50%, #c084fc 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 4s ease infinite;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-hover {
+  transition: all 0.3s ease;
+}
+.glass-hover:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(127, 84, 179, 0.3);
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(127, 84, 179, 0.1) 25%,
+    rgba(127, 84, 179, 0.2) 50%,
+    rgba(127, 84, 179, 0.1) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Diff syntax highlighting */
+.diff-line-removed {
+  color: #f48771;
+}
+.diff-line-added {
+  color: #89d185;
+}
+
+/* Code blocks */
+.code-block {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  tab-size: 4;
+}
+
+/* Grid background pattern */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(127, 84, 179, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(127, 84, 179, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Glow orb */
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
