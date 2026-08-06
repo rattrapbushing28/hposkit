@@ -1,0 +1,3 @@
+Add FUNDING.yml for GitHub Sponsor button
+
+Enables the "Sponsor" button in the repo sidebar linking to paypal.me/rynald0s
