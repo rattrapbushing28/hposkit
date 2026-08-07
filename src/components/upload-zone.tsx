@@ -6,20 +6,35 @@ interface UploadZoneProps {
   onFile: (file: File) => void;
 }
 
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+
 export function UploadZone({ onFile }: UploadZoneProps) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const handleFileSelected = (file: File | null) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      alert("Please provide a .zip file");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      alert("File is too large. Maximum supported size is 100 MB.");
+      return;
+    }
+    onFile(file);
+  };
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file && file.name.toLowerCase().endsWith(".zip")) onFile(file);
+    const file = e.dataTransfer.files[0] || null;
+    handleFileSelected(file);
   }, [onFile]);
 
   const handleSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) onFile(file);
+    const file = e.target.files?.[0] || null;
+    handleFileSelected(file);
   }, [onFile]);
 
   return (
@@ -44,7 +59,7 @@ export function UploadZone({ onFile }: UploadZoneProps) {
           <p className="text-xs text-gray-500 mt-1">or <span className="text-wc-purpleLight underline underline-offset-2">browse files</span> — .zip only</p>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 text-[10px] text-gray-500">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0" /></svg>
           Processed locally
         </div>
       </div>
