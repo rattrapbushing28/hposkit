@@ -1,4 +1,4 @@
-/**
+/*
  * Plugin zip extraction and repackaging utilities.
  * Uses JSZip to handle WordPress plugin zip files entirely in-browser.
  */
@@ -15,6 +15,40 @@ export interface ExtractedPlugin {
   rootFolder: string;
 }
 
+function normalizePath(p: string) {
+  // Normalize ZIP entry paths: remove leading ./, convert backslashes to slashes
+  return p.replace(/^\.\//, "").replace(/\\/g, "/");
+}
+
+/**
+ * Determine common root folder among entries. Returns "" if no single root.
+ */
+function detectRootFolder(entries: string[]): string {
+  const firstSegments = entries
+    .map((e) => normalizePath(e))
+    .map((e) => {
+      const parts = e.split("/").filter(Boolean);
+      return parts.length > 0 ? parts[0] : "";
+    })
+    .filter(Boolean);
+
+  if (firstSegments.length === 0) return "";
+  const counts: Record<string, number> = {};
+  for (const s of firstSegments) counts[s] = (counts[s] || 0) + 1;
+  const entriesCount = firstSegments.length;
+  let top = "";
+  let topCount = 0;
+  for (const k of Object.keys(counts)) {
+    if (counts[k] > topCount) {
+      top = k;
+      topCount = counts[k];
+    }
+  }
+  // Only accept as root folder if it appears for a majority of entries.
+  if (topCount / entriesCount >= 0.6) return top;
+  return "";
+}
+
 /**
  * Extract a plugin zip file and return all PHP files plus metadata.
  */
@@ -27,23 +61,21 @@ export async function extractPluginZip(zipFile: File): Promise<ExtractedPlugin> 
   let rootFolder = "";
 
   const entries = Object.values(zip.files);
+  const entryNames = entries.map((e) => normalizePath(e.name));
 
-  // Determine root folder (first path segment).
-  if (entries.length > 0) {
-    const firstPath = entries[0].name;
-    const slashIndex = firstPath.indexOf("/");
-    if (slashIndex !== -1) {
-      rootFolder = firstPath.substring(0, slashIndex);
-    }
+  // Determine root folder more robustly
+  if (entryNames.length > 0) {
+    rootFolder = detectRootFolder(entryNames);
   }
 
   for (const entry of entries) {
     if (entry.dir) continue;
+    const name = normalizePath(entry.name);
     // Only process PHP files for scanning, but keep all for repackaging.
-    if (!entry.name.toLowerCase().endsWith(".php")) continue;
+    if (!name.toLowerCase().endsWith(".php")) continue;
 
     const content = await entry.async("string");
-    const scanned: ScannedFile = { path: entry.name, content };
+    const scanned: ScannedFile = { path: name, content };
     files.push(scanned);
 
     // Detect main plugin file by looking for "Plugin Name:" header.
@@ -84,13 +116,16 @@ export async function downloadPatchedZip(
 
   for (const entry of entries) {
     if (entry.dir) {
-      newZip.folder(entry.name.replace(/\/$/, ""));
+      // Keep folder structure
+      newZip.folder(normalizePath(entry.name).replace(/\/$/, ""));
       continue;
     }
 
-    // If this file was patched, use the patched content.
-    if (patchedFiles.has(entry.name)) {
-      newZip.file(entry.name, patchedFiles.get(entry.name)!);
+    const normalized = normalizePath(entry.name);
+
+    // If this file was patched, use the patched content. Compare normalized paths.
+    if (patchedFiles.has(normalized)) {
+      newZip.file(entry.name, patchedFiles.get(normalized)!);
     } else {
       // Keep original content for non-patched files.
       const content = await entry.async("blob");

@@ -4,6 +4,7 @@
  */
 
 import type { Issue, ScannedFile } from "./scanner";
+import { isIndexInsideStringOrComment } from "./protection";
 
 export interface PatchResult {
   file: string;
@@ -12,6 +13,33 @@ export interface PatchResult {
   diff: string;
   applied: boolean;
   error?: string;
+}
+
+/**
+ * Helper: perform replacements only for matches that are not inside strings/comments.
+ * replacementFn receives (match, ...groups, matchIndex, fullString) and should
+ * return the replacement string for that match.
+ */
+function safeReplace(content: string, pattern: RegExp, replacementFn: (...args: any[]) => string): string {
+  let out = "";
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  // Ensure global flag
+  const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+  while ((m = re.exec(content)) !== null) {
+    const idx = m.index;
+    // If the start is inside a string or comment, skip this match
+    if (isIndexInsideStringOrComment(content, idx)) {
+      // advance lastIndex and continue without replacing
+      continue;
+    }
+    out += content.slice(lastIndex, idx);
+    const repl = replacementFn(...m, idx, content);
+    out += repl;
+    lastIndex = idx + m[0].length;
+  }
+  out += content.slice(lastIndex);
+  return out;
 }
 
 /**
@@ -43,48 +71,51 @@ export function applyPatch(content: string, issue: Issue): string | null {
 }
 
 function patchGetPost(content: string): string {
-  // Match get_post( $order_id ) or get_post( $order_id, $output, $filter )
-  // Replace just the get_post call, preserve any extra args by dropping them
-  // since wc_get_order doesn't accept $output/$filter params.
+  // Replace get_post( $id ) with wc_get_order( $id ) only when in code context.
   const pattern = /get_post\s*\(\s*\$(order_id|order|post_id|postid|id)\b[^)]*\)/gi;
-  return content.replace(pattern, (_match, variable) => {
+  return safeReplace(content, pattern, (_match: string, variable: string) => {
     return `wc_get_order( $${variable} )`;
   });
 }
 
 function patchGetPostMeta(content: string): string {
-  const pattern = /get_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'"]+['"])\s*(?:,\s*(true|false)\s*)?\)/gi;
-  return content.replace(pattern, (_match, variable, key, single) => {
+  const pattern = /get_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'"]+['"])\s*(?:,\s*(true|false)\s*)?\)\s*;?/gi;
+  return safeReplace(content, pattern, (_match: string, variable: string, key: string, single?: string) => {
+    // Ensure we only patch full statements (ending with semicolon) to avoid expression context issues
     return `wc_get_order( $${variable} )->get_meta( ${key}${single ? ', ' + single : ''} )`;
   });
 }
 
 function patchAddPostMeta(content: string): string {
-  const pattern = /add_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'"]+['"])\s*,\s*([\s\S]+?)\s*\)\s*;?/g;
-  return content.replace(pattern, (_match, variable, key, value) => {
+  // Only patch standalone statements where arguments are simple (no nested parentheses)
+  const pattern = /add_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'"]+['"])\s*,\s*([^;\n\)]+)\)\s*;?/gi;
+  return safeReplace(content, pattern, (_match: string, variable: string, key: string, value: string) => {
     const trimmedValue = value.trim();
+    // If value contains parentheses which may indicate a complex expression, skip auto-patch
+    if (/\(|\[|\{/.test(trimmedValue)) return _match;
     return `$order = wc_get_order( $${variable} ); $order->add_meta_data( ${key}, ${trimmedValue} ); $order->save();`;
   });
 }
 
 function patchUpdatePostMeta(content: string): string {
-  const pattern = /update_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'"]+['"])\s*,\s*([\s\S]+?)\s*\)\s*;?/g;
-  return content.replace(pattern, (_match, variable, key, value) => {
+  const pattern = /update_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'"]+['"])\s*,\s*([^;\n\)]+)\)\s*;?/gi;
+  return safeReplace(content, pattern, (_match: string, variable: string, key: string, value: string) => {
     const trimmedValue = value.trim();
+    if (/\(|\[|\{/.test(trimmedValue)) return _match;
     return `$order = wc_get_order( $${variable} ); $order->update_meta_data( ${key}, ${trimmedValue} ); $order->save();`;
   });
 }
 
 function patchDeletePostMeta(content: string): string {
-  const pattern = /delete_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'"]+['"])\s*(?:,\s*([\s\S]+?)\s*)?\)\s*;?/g;
-  return content.replace(pattern, (_match, variable, key) => {
+  const pattern = /delete_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'"]+['"])\s*(?:,\s*([^;\n\)]+)\s*)?\)\s*;?/gi;
+  return safeReplace(content, pattern, (_match: string, variable: string, key: string) => {
     return `$order = wc_get_order( $${variable} ); $order->delete_meta_data( ${key} ); $order->save();`;
   });
 }
 
 function patchWpQueryOrders(content: string): string {
   const pattern = /new\s+WP_Query\s*\(\s*(\[\s*(?:[^\]]*?)post_type['"]\s*=>\s*['"]shop_order['"][^\]]*\]|\s*array\s*\(\s*(?:[^)]*?)post_type['"]\s*=>\s*['"]shop_order['"][^)]*\))\s*\)/gi;
-  return content.replace(pattern, (_match, args) => {
+  return safeReplace(content, pattern, (_match: string, args: string) => {
     const cleaned = args.replace(/['"]post_type['"]\s*=>\s*['"]shop_order['"]\s*,?\s*/i, "").trim().replace(/^[,\s]+|[,\s]+$/g, "");
     return `wc_get_orders( ${cleaned} )`;
   });
@@ -92,23 +123,27 @@ function patchWpQueryOrders(content: string): string {
 
 function patchGetPostsOrders(content: string): string {
   const pattern = /get_posts\s*\(\s*(\[\s*(?:[^\]]*?)post_type['"]\s*=>\s*['"]shop_order['"][^\]]*\]|\s*array\s*\(\s*(?:[^)]*?)post_type['"]\s*=>\s*['"]shop_order['"][^)]*\))\s*\)/gi;
-  return content.replace(pattern, (_match, args) => {
+  return safeReplace(content, pattern, (_match: string, args: string) => {
     const cleaned = args.replace(/['"]post_type['"]\s*=>\s*['"]shop_order['"]\s*,?\s*/i, "").trim().replace(/^[,\s]+|[,\s]+$/g, "");
     return `wc_get_orders( ${cleaned} )`;
   });
 }
 
 function patchMissingDeclaration(content: string): string {
-  // Per WooCommerce docs and webkul.com guide:
-  // Use FeaturesUtil::class syntax with true (compatible) parameter.
-  const declaration = `\n\n// Declare HPOS compatibility.\nadd_action( 'before_woocommerce_init', function() {\n\tif ( class_exists( \\Automattic\\WooCommerce\\Utilities\\FeaturesUtil::class ) ) {\n\t\t\\Automattic\\WooCommerce\\Utilities\\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );\n\t}\n} );\n`;
+  // Insert a valid declare_compatibility snippet. This exact snippet is safe
+  // and matches WooCommerce guidance. Backslashes are double-escaped for the
+  // TypeScript string literal.
+  const declaration = `\n\n// Declare HPOS compatibility.\nadd_action( 'before_woocommerce_init', function() {\n    if ( class_exists( '\\Automattic\\WooCommerce\\Utilities\\FeaturesUtil' ) ) {\n        \\Automattic\\WooCommerce\\Utilities\\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__ );\n    }\n} );\n\n`;
 
-  const headerEnd = content.indexOf("*/");
-  if (headerEnd !== -1) {
-    const pos = headerEnd + 2;
-    return content.substring(0, pos) + declaration + content.substring(pos);
+  // Prefer to insert directly after the plugin header block if present.
+  const pluginHeaderMatch = content.match(/\/\*[\s\S]*?Plugin Name:\s*.+?\*[\s\S]*?\*\//i);
+  if (pluginHeaderMatch && pluginHeaderMatch.index !== undefined) {
+    const headerEnd = pluginHeaderMatch.index + pluginHeaderMatch[0].length;
+    return content.substring(0, headerEnd) + declaration + content.substring(headerEnd);
   }
-  return declaration + "\n" + content;
+
+  // Fallback: insert at top of the file.
+  return declaration + content;
 }
 
 function patchMissingHeader(content: string, issue: Issue): string {
@@ -123,12 +158,26 @@ function patchMissingHeader(content: string, issue: Issue): string {
     insertions.push(" * WC tested up to: 9.4");
   }
 
-  const headerEnd = content.indexOf("*/");
-  if (headerEnd !== -1) {
-    const insert = "\n" + insertions.join("\n") + "\n";
-    return content.substring(0, headerEnd) + insert + content.substring(headerEnd);
+  if (insertions.length === 0) return content;
+
+  // Attempt to find the plugin header block and insert before its closing */
+  const pluginHeaderMatch = content.match(/\/\*[\s\S]*?Plugin Name:\s*.+?\*[\s\S]*?\*\//i);
+  if (pluginHeaderMatch && pluginHeaderMatch.index !== undefined) {
+    const headerStart = pluginHeaderMatch.index;
+    const header = pluginHeaderMatch[0];
+    const headerEnd = headerStart + header.length;
+    // Insert before closing */ inside header
+    const closingIndex = header.lastIndexOf("*/");
+    if (closingIndex !== -1) {
+      const insertPos = headerStart + closingIndex;
+      const insert = "\n" + insertions.join("\n") + "\n";
+      return content.substring(0, insertPos) + insert + content.substring(insertPos);
+    }
   }
-  return content;
+
+  // Fallback: add header at top
+  const headerBlock = `/*\n${insertions.join("\n")}\n*/\n`;
+  return headerBlock + content;
 }
 
 /**
@@ -179,24 +228,45 @@ export function patchAllIssues(
 
     if (fileIssues.length > 0) {
       const original = content;
-      for (const issue of fileIssues) {
-        const patched = applyPatch(content, issue);
-        if (patched !== null) {
-          content = patched;
+      try {
+        for (const issue of fileIssues) {
+          const patched = applyPatch(content, issue);
+          if (patched !== null && patched !== content) {
+            content = patched;
+          }
         }
-      }
 
-      if (content !== original) {
-        const diff = computeDiff(original, content, file.path);
+        if (content !== original) {
+          const diff = computeDiff(original, content, file.path);
+          results.push({
+            file: file.path,
+            originalContent: original,
+            patchedContent: content,
+            diff,
+            applied: true,
+          });
+          patchedFiles.push({ path: file.path, content });
+        } else {
+          // No changes but file had patchable issues that couldn't be auto-applied
+          results.push({
+            file: file.path,
+            originalContent: original,
+            patchedContent: original,
+            diff: "",
+            applied: false,
+            error: "No safe auto-patch applied; manual review required.",
+          });
+          patchedFiles.push(file);
+        }
+      } catch (err: any) {
         results.push({
           file: file.path,
-          originalContent: original,
+          originalContent: content,
           patchedContent: content,
-          diff,
-          applied: true,
+          diff: "",
+          applied: false,
+          error: err instanceof Error ? err.message : String(err),
         });
-        patchedFiles.push({ path: file.path, content });
-      } else {
         patchedFiles.push(file);
       }
     } else {
