@@ -32,10 +32,20 @@ export default function Home() {
   const [extractedFileCount, setExtractedFileCount] = useState(0);
   const [downloadStarted, setDownloadStarted] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
+  const [patchSuccess, setPatchSuccess] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const currentStep = phaseStep(phase);
   const patchedCount = patchResults.filter((r) => r.applied).length;
+
+  // Auto-redirect to home after successful patch + download
+  useEffect(() => {
+    if (!patchSuccess) return;
+    const timer = setTimeout(() => {
+      handleReset();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [patchSuccess]);
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -154,6 +164,7 @@ export default function Home() {
       await typeLine(`  written: ${outName}`);
       await typeLine(`  download started ✓`, 400);
       setDownloadStarted(true);
+      setPatchSuccess(true);
       setPhase("patched");
     } catch (err) {
       await typeLine(`  ERROR: ${err instanceof Error ? err.message : "failed"}`);
@@ -174,6 +185,7 @@ export default function Home() {
     setExtractedFileCount(0);
     setDownloadStarted(false);
     setTerminalLines([]);
+    setPatchSuccess(false);
   }, []);
 
   return (
@@ -186,10 +198,10 @@ export default function Home() {
       {/* Nav */}
       <nav className="relative z-10 border-b border-white/5">
         <div className="max-w-4xl mx-auto px-5 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <button onClick={handleReset} className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
             <Logo size={26} />
             <span className="font-semibold text-sm tracking-tight">HPOSKit <span className="text-gray-500 font-normal">for WooCommerce</span></span>
-          </div>
+          </button>
           <DonateButton compact />
         </div>
       </nav>
@@ -393,6 +405,24 @@ export default function Home() {
           {/* Patched */}
           {phase === "patched" && report && (
             <div className="space-y-4">
+              {/* Success banner with auto-redirect */}
+              {patchSuccess && (
+                <div className="glass rounded-xl p-4 border-green-500/30 bg-green-500/5 animate-fade-in-up">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+                      <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-green-300">Patch complete! Download started.</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Redirecting to home in a few seconds...</p>
+                    </div>
+                    <button onClick={handleReset} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors whitespace-nowrap">
+                      Back to Home
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="glass rounded-xl p-4 border-green-500/20 animate-fade-in-up">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -407,7 +437,7 @@ export default function Home() {
                       {downloadStarted && <span className="text-green-400 ml-2">✓ Downloaded!</span>}
                     </p>
                   </div>
-                  {patchedCount > 0 && (
+                  {patchedCount > 0 && !patchSuccess && (
                     <button onClick={handleDownload} className="px-4 py-2 rounded-lg bg-gradient-to-r from-wc-purple to-purple-500 text-white text-xs font-medium hover:from-wc-purpleDark hover:to-purple-600 transition-all flex items-center gap-1.5 whitespace-nowrap">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                       Download
@@ -445,13 +475,15 @@ export default function Home() {
 
               {/* Actions */}
               <div className="flex gap-2 pt-2">
-                {patchedCount > 0 && (
+                {patchedCount > 0 && !patchSuccess && (
                   <button onClick={handleDownload} className="px-4 py-2 rounded-lg bg-gradient-to-r from-wc-purple to-purple-500 text-white text-xs font-medium hover:from-wc-purpleDark hover:to-purple-600 transition-all flex items-center gap-1.5">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                     Download Patched Plugin
                   </button>
                 )}
-                <button onClick={handleReset} className="px-4 py-2 rounded-lg glass glass-hover text-gray-300 text-xs font-medium">Scan Another</button>
+                <button onClick={handleReset} className="px-4 py-2 rounded-lg glass glass-hover text-gray-300 text-xs font-medium">
+                  {patchSuccess ? "Back to Home" : "Scan Another"}
+                </button>
               </div>
 
               {/* Donate nudge */}

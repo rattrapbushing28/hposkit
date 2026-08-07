@@ -10,32 +10,34 @@ const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
 
 export function UploadZone({ onFile }: UploadZoneProps) {
   const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelected = (file: File | null) => {
+  const handleFileSelected = useCallback((file: File | null) => {
     if (!file) return;
+    setError(null);
     if (!file.name.toLowerCase().endsWith(".zip")) {
-      alert("Please provide a .zip file");
+      setError("Please provide a .zip file");
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      alert("File is too large. Maximum supported size is 100 MB.");
+      setError("File is too large. Maximum supported size is 100 MB.");
       return;
     }
     onFile(file);
-  };
+  }, [onFile]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files[0] || null;
     handleFileSelected(file);
-  }, [onFile]);
+  }, [handleFileSelected]);
 
   const handleSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     handleFileSelected(file);
-  }, [onFile]);
+  }, [handleFileSelected]);
 
   return (
     <div
@@ -58,6 +60,11 @@ export function UploadZone({ onFile }: UploadZoneProps) {
           <p className="text-base font-semibold text-gray-100">{dragging ? "Drop it here" : "Drop your plugin zip"}</p>
           <p className="text-xs text-gray-500 mt-1">or <span className="text-wc-purpleLight underline underline-offset-2">browse files</span> — .zip only</p>
         </div>
+        {error && (
+          <div className="mt-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-1.5 text-xs text-red-300">
+            {error}
+          </div>
+        )}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 text-[10px] text-gray-500">
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0" /></svg>
           Processed locally

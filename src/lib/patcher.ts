@@ -16,6 +16,236 @@ export interface PatchResult {
 }
 
 /**
+ * Find the matching closing parenthesis for an opening paren at position `start`.
+ * Handles nested parens, strings (single/double quoted), and comments.
+ * Returns the index of the matching `)`, or -1 if not found.
+ */
+function findMatchingParen(content: string, start: number): number {
+  let depth = 0;
+  let i = start;
+  let state: "code" | "single" | "double" | "block" | "line" = "code";
+  const len = content.length;
+
+  while (i < len) {
+    const ch = content[i];
+    const next = i + 1 < len ? content[i + 1] : "";
+
+    if (state === "code") {
+      if (ch === "'") { state = "single"; i++; continue; }
+      if (ch === '"') { state = "double"; i++; continue; }
+      if (ch === "/" && next === "*") { state = "block"; i += 2; continue; }
+      if (ch === "/" && next === "/") { state = "line"; i += 2; continue; }
+      if (ch === "#") { state = "line"; i++; continue; }
+      if (ch === "(") { depth++; i++; continue; }
+      if (ch === ")") {
+        depth--;
+        if (depth === 0) return i;
+        i++; continue;
+      }
+      i++; continue;
+    }
+
+    if (state === "single") {
+      if (ch === "\\") { i += 2; continue; }
+      if (ch === "'") { state = "code"; i++; continue; }
+      i++; continue;
+    }
+
+    if (state === "double") {
+      if (ch === "\\") { i += 2; continue; }
+      if (ch === '"') { state = "code"; i++; continue; }
+      i++; continue;
+    }
+
+    if (state === "block") {
+      if (ch === "*" && next === "/") { state = "code"; i += 2; continue; }
+      i++; continue;
+    }
+
+    if (state === "line") {
+      if (ch === "\n" || ch === "\r") { state = "code"; i++; continue; }
+      i++; continue;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * Split a function's argument string (content between outer parens) into
+ * individual arguments, respecting nested parens, strings, and comments.
+ */
+function splitArguments(argsStr: string): string[] {
+  const args: string[] = [];
+  let depth = 0;
+  let current = "";
+  let state: "code" | "single" | "double" | "block" | "line" = "code";
+  const len = argsStr.length;
+
+  for (let i = 0; i < len; i++) {
+    const ch = argsStr[i];
+    const next = i + 1 < len ? argsStr[i + 1] : "";
+
+    if (state === "code") {
+      if (ch === "'") { state = "single"; current += ch; continue; }
+      if (ch === '"') { state = "double"; current += ch; continue; }
+      if (ch === "/" && next === "*") { state = "block"; current += ch + next; i++; continue; }
+      if (ch === "/" && next === "/") { state = "line"; current += ch + next; i++; continue; }
+      if (ch === "#") { state = "line"; current += ch; continue; }
+      if (ch === "(") { depth++; current += ch; continue; }
+      if (ch === ")") { depth--; current += ch; continue; }
+      if (ch === "," && depth === 0) {
+        args.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (state === "single") {
+      current += ch;
+      if (ch === "\\") { current += next; i++; continue; }
+      if (ch === "'") { state = "code"; continue; }
+      continue;
+    }
+
+    if (state === "double") {
+      current += ch;
+      if (ch === "\\") { current += next; i++; continue; }
+      if (ch === '"') { state = "code"; continue; }
+      continue;
+    }
+
+    if (state === "block") {
+      current += ch;
+      if (ch === "*" && next === "/") { current += next; state = "code"; i++; continue; }
+      continue;
+    }
+
+    if (state === "line") {
+      current += ch;
+      if (ch === "\n" || ch === "\r") { state = "code"; continue; }
+      continue;
+    }
+  }
+
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
+interface FunctionCallMatch {
+  fullMatch: string;
+  startIndex: number;
+  endIndex: number; // index after the closing )
+  args: string[];
+}
+
+/**
+ * Find all calls to a named PHP function in content, using balanced paren matching.
+ * Only matches in code context (not inside strings/comments).
+ * Returns matches with their parsed arguments.
+ */
+function findFunctionCalls(content: string, funcName: string): FunctionCallMatch[] {
+  const results: FunctionCallMatch[] = [];
+  // Match function name followed by optional whitespace and opening paren
+  const namePattern = new RegExp(`\\b${funcName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\(`, "gi");
+  let m: RegExpExecArray | null;
+
+  while ((m = namePattern.exec(content)) !== null) {
+    const callStart = m.index;
+
+    // Skip if inside string or comment
+    if (isIndexInsideStringOrComment(content, callStart)) continue;
+
+    // Find the opening paren position
+    const parenStart = callStart + m[0].length - 1; // position of (
+    const parenEnd = findMatchingParen(content, parenStart);
+
+    if (parenEnd === -1) continue;
+
+    // Extract arguments between parens
+    const argsStr = content.slice(parenStart + 1, parenEnd);
+    const args = splitArguments(argsStr);
+
+    results.push({
+      fullMatch: content.slice(callStart, parenEnd + 1),
+      startIndex: callStart,
+      endIndex: parenEnd + 1,
+      args,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Check if a match is in standalone statement context (followed by ; or newline/EOF).
+ */
+function isStatementContext(content: string, afterIndex: number): boolean {
+  const restSlice = content.slice(afterIndex);
+  return /^\s*;/.test(restSlice) ||
+         /^\s*(\/\/|\/\*|\#|\r|\n|$)/.test(restSlice);
+}
+
+/**
+ * Check if the first argument is an order-related variable ($order_id, $order, $post_id, $postid, $id).
+ */
+function isOrderVar(arg: string): string | null {
+  const m = /^\$(order_id|order|post_id|postid|id)\b/.exec(arg.trim());
+  return m ? m[1] : null;
+}
+
+/**
+ * Generic meta function patcher using balanced paren parsing.
+ * Handles multi-line calls, nested parens in values, and variable keys.
+ */
+function patchMetaFunction(
+  content: string,
+  funcName: string,
+  buildReplacement: (variable: string, args: string[], originalMatch: string) => string | null
+): string {
+  const calls = findFunctionCalls(content, funcName);
+  if (calls.length === 0) return content;
+
+  let result = "";
+  let lastIndex = 0;
+
+  for (const call of calls) {
+    // Must be in statement context
+    if (!isStatementContext(content, call.endIndex)) continue;
+
+    // First argument must be an order variable
+    if (call.args.length < 2) continue;
+    const varName = isOrderVar(call.args[0]);
+    if (!varName) continue;
+
+    const replacement = buildReplacement(varName, call.args, call.fullMatch);
+    if (replacement === null) continue;
+
+    result += content.slice(lastIndex, call.startIndex);
+
+    // Preserve trailing semicolon
+    const afterMatch = content.slice(call.endIndex);
+    const semicolonMatch = /^\s*;/.exec(afterMatch);
+    let repl = replacement;
+    if (semicolonMatch && !/;\s*$/.test(repl)) {
+      repl = repl + ";";
+    }
+
+    result += repl;
+    lastIndex = call.endIndex;
+    // Skip past the semicolon if we consumed it
+    if (semicolonMatch) {
+      lastIndex = call.endIndex + semicolonMatch[0].length;
+    }
+  }
+
+  result += content.slice(lastIndex);
+  return result;
+}
+
+/**
  * Helper: perform replacements only for matches that are not inside strings/comments.
  * replacementFn receives (match, ...groups, matchIndex, fullString) and should
  * return the replacement string for that match.
@@ -101,35 +331,41 @@ function patchGetPost(content: string): string {
 }
 
 function patchGetPostMeta(content: string): string {
-  const pattern = /get_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'\"]+['"])\s*(?:,\s*(true|false)\s*)?\)\s*;?/gi;
-  return safeReplace(content, pattern, (_match: string, variable: string, key: string, single?: string) => {
-    return `wc_get_order( $${variable} )->get_meta( ${key}${single ? ', ' + single : ''} )`;
+  return patchMetaFunction(content, "get_post_meta", (variable, args) => {
+    // get_post_meta( $order_id, $key, $single )
+    if (args.length < 2) return null;
+    const key = args[1].trim();
+    const single = args[2] ? args[2].trim() : "";
+    const singleArg = single && (single === "true" || single === "false") ? `, ${single}` : "";
+    return `wc_get_order( $${variable} )->get_meta( ${key}${singleArg} )`;
   });
 }
 
 function patchAddPostMeta(content: string): string {
-  // Only patch standalone statements where arguments are simple (no nested parentheses)
-  const pattern = /add_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'\"]+['"])\s*,\s*([^;\n\)]+)\)\s*;?/gi;
-  return safeReplace(content, pattern, (_match: string, variable: string, key: string, value: string) => {
-    const trimmedValue = value.trim();
-    // If value contains parentheses which may indicate a complex expression, skip auto-patch
-    if (/\(|\[|\{/.test(trimmedValue)) return _match;
-    return `$order = wc_get_order( $${variable} ); $order->add_meta_data( ${key}, ${trimmedValue} ); $order->save();`;
+  return patchMetaFunction(content, "add_post_meta", (variable, args) => {
+    // add_post_meta( $order_id, $key, $value, $unique )
+    if (args.length < 3) return null;
+    const key = args[1].trim();
+    const value = args[2].trim();
+    return `$order = wc_get_order( $${variable} ); $order->add_meta_data( ${key}, ${value} ); $order->save();`;
   });
 }
 
 function patchUpdatePostMeta(content: string): string {
-  const pattern = /update_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'\"]+['"])\s*,\s*([^;\n\)]+)\)\s*;?/gi;
-  return safeReplace(content, pattern, (_match: string, variable: string, key: string, value: string) => {
-    const trimmedValue = value.trim();
-    if (/\(|\[|\{/.test(trimmedValue)) return _match;
-    return `$order = wc_get_order( $${variable} ); $order->update_meta_data( ${key}, ${trimmedValue} ); $order->save();`;
+  return patchMetaFunction(content, "update_post_meta", (variable, args) => {
+    // update_post_meta( $order_id, $key, $value, $prev_value )
+    if (args.length < 3) return null;
+    const key = args[1].trim();
+    const value = args[2].trim();
+    return `$order = wc_get_order( $${variable} ); $order->update_meta_data( ${key}, ${value} ); $order->save();`;
   });
 }
 
 function patchDeletePostMeta(content: string): string {
-  const pattern = /delete_post_meta\s*\(\s*\$(order_id|order|post_id|postid|id)\s*,\s*(['"][^'\"]+['"])\s*(?:,\s*([^;\n\)]+)\s*)?\)\s*;?/gi;
-  return safeReplace(content, pattern, (_match: string, variable: string, key: string) => {
+  return patchMetaFunction(content, "delete_post_meta", (variable, args) => {
+    // delete_post_meta( $order_id, $key, $value )
+    if (args.length < 2) return null;
+    const key = args[1].trim();
     return `$order = wc_get_order( $${variable} ); $order->delete_meta_data( ${key} ); $order->save();`;
   });
 }
@@ -156,7 +392,7 @@ function patchMissingDeclaration(content: string): string {
 
   // Prefer to insert directly after the plugin header block if present (search top of file).
   const topSegment = content.slice(0, 2000);
-  const headerRegex = /\/\*\s*[\s\S]*?Plugin Name:\s*.*?\*\/\s*/im;
+  const headerRegex = /\/\*\s*[\s\S]*?Plugin Name:\s*[\s\S]*?\*\/\s*/im;
   const headerMatch = headerRegex.exec(topSegment);
   if (headerMatch && headerMatch.index !== undefined) {
     const headerEnd = headerMatch.index + headerMatch[0].length;
@@ -189,7 +425,7 @@ function patchMissingHeader(content: string, issue: Issue): string {
 
   // Attempt to find the plugin header block and insert before its closing */ (only search top of file)
   const topSegment = content.slice(0, 2000);
-  const pluginHeaderMatch = /\/\*\s*[\s\S]*?Plugin Name:\s*.*?\*\//im.exec(topSegment);
+  const pluginHeaderMatch = /\/\*\s*[\s\S]*?Plugin Name:\s*[\s\S]*?\*\//im.exec(topSegment);
   if (pluginHeaderMatch && pluginHeaderMatch.index !== undefined) {
     const headerStart = pluginHeaderMatch.index;
     const header = pluginHeaderMatch[0];

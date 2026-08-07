@@ -33,19 +33,10 @@ function detectRootFolder(entries: string[]): string {
     .filter(Boolean);
 
   if (firstSegments.length === 0) return "";
-  const counts: Record<string, number> = {};
-  for (const s of firstSegments) counts[s] = (counts[s] || 0) + 1;
-  const entriesCount = firstSegments.length;
-  let top = "";
-  let topCount = 0;
-  for (const k of Object.keys(counts)) {
-    if (counts[k] > topCount) {
-      top = k;
-      topCount = counts[k];
-    }
-  }
-  // Only accept as root folder if it appears for a majority of entries.
-  if (topCount / entriesCount >= 0.6) return top;
+  // Strict: all entries must share the same top-level folder.
+  // This prevents picking a wrong root for mixed zips.
+  const unique = new Set(firstSegments);
+  if (unique.size === 1) return firstSegments[0];
   return "";
 }
 
